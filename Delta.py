@@ -12,6 +12,7 @@ BOT_TOKEN = "8338340082:AAEsoaqZFzeOMk7fD5_KOSltRc07RHY7BXw"
 CHANNEL_ID = "-1003212268545"
 INTERVAL = 60  # seconds between checks
 ALERT_FILE = "alert_history.json"  # store daily alerts
+DELTA_API = "https://api.delta.exchange/v2"
 
 # ========================
 # 💾 Load previous alerts
@@ -32,11 +33,11 @@ async def send_alert(bot: Bot, message: str):
 
 
 # ========================
-# 💹 Fetch Spot + Futures
+# 💹 Fetch Futures + Perpetual
 # ========================
 async def fetch_symbols():
-    """Fetch only Spot and Futures (including Perpetual) products."""
-    url = "https://api.delta.exchange/v2/products"
+    """Fetch only Futures and Perpetual products from Delta Exchange."""
+    url = f"{DELTA_API}/products"
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     data = response.json().get("result", [])
@@ -45,10 +46,10 @@ async def fetch_symbols():
         item["symbol"]
         for item in data
         if item.get("state") == "live"
-        and item.get("contract_type") in ["spot", "futures", "perpetual", "perpetual_futures"]
+        and item.get("contract_type") in ["futures", "perpetual_futures"]
     ]
 
-    print(f"✅ Found {len(symbols)} live Spot/Futures symbols.")
+    print(f"✅ Found {len(symbols)} live Futures/Perpetual symbols.")
     if symbols:
         print("🔹 Sample:", symbols[:10])
     return symbols
@@ -77,12 +78,16 @@ def mark_alerted(symbol, alert_type):
 # 📈 Main Logic
 # ========================
 async def check_markets(bot: Bot):
-    """Check 24H high/low for Spot + Futures (only 1 alert/day)."""
+    """Check 24H high/low for Futures + Perpetual (only 1 alert/day)."""
     all_symbols = await fetch_symbols()
+
+    if not all_symbols:
+        print("⚠️ No active futures/perpetual symbols found — check API or filters.")
+        return
 
     while True:
         try:
-            url = "https://api.delta.exchange/v2/tickers"
+            url = f"{DELTA_API}/tickers"
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             tickers = response.json().get("result", [])
@@ -125,7 +130,7 @@ async def check_markets(bot: Bot):
                     print(msg)
                     await send_alert(bot, msg)
 
-            print("✅ Checked all Spot + Futures.")
+            print("✅ Checked all Futures + Perpetual symbols.")
             await asyncio.sleep(INTERVAL)
 
         except Exception as e:
@@ -138,7 +143,8 @@ async def check_markets(bot: Bot):
 # ========================
 async def main():
     bot = Bot(token=BOT_TOKEN)
-    print("📊 Delta Spot + Futures 24H High/Low Bot (1 alert per side/day + time stamp)...")
+    now_ist = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    print(f"📉 Delta Futures + Perpetual High/Low Alert Bot running ({now_ist})")
     await check_markets(bot)
 
 
